@@ -266,6 +266,7 @@ _DETAIL_CARD_JS_TEMPLATE = """\
   function hookDeckClick() {
     if (window.datamap && window.datamap.deckgl) {
       window.datamap.deckgl.setProps({
+        controller: {scrollZoom: {speed: 0.3, smooth: false}},
         onClick: function(info) {
           if (info && info.picked && info.index != null) {
             var issue = issueByIndex[info.index];
@@ -273,6 +274,9 @@ _DETAIL_CARD_JS_TEMPLATE = """\
           }
         }
       });
+      // Remove CSS transition on canvas that causes sluggish repaints
+      var canvas = document.querySelector('canvas');
+      if (canvas) canvas.style.transition = 'none';
     }
   }
 

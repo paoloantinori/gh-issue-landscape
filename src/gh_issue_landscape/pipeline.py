@@ -54,7 +54,8 @@ def clean_topic_label(keywords: list[str], max_words: int = 3) -> str:
         if not w_lower or w_lower in seen or len(w_lower) > 25:
             continue
         seen.add(w_lower)
-        if w_lower not in _STOPWORDS and not w_lower.isdigit():
+        digit_ratio = sum(c.isdigit() for c in w_lower) / len(w_lower)
+        if w_lower not in _STOPWORDS and digit_ratio < 0.4:
             clean.append(w_lower.title())
         if len(clean) >= max_words:
             break

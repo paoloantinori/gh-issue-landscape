@@ -26,26 +26,26 @@ def _assign_topic_colors(topic_ids: set[int]) -> dict[int, str]:
     Uses a muted cartographic palette that reads well on light backgrounds.
     """
     palette = [
-        "#9b4d6a",  # rose
-        "#6b70a8",  # periwinkle
-        "#7aab88",  # sage
-        "#b07040",  # sienna
-        "#a07098",  # orchid
-        "#7a8b50",  # olive
-        "#4080a0",  # teal
-        "#5878a0",  # steel
-        "#40908a",  # cyan-teal
-        "#388040",  # emerald
-        "#8a8030",  # gold-olive
-        "#9088b0",  # lavender
-        "#a88050",  # amber
-        "#b04030",  # brick
-        "#7840a0",  # purple
-        "#a06060",  # dusty rose
-        "#4890b0",  # sky blue
-        "#80a040",  # lime
-        "#a04888",  # magenta
-        "#6070a0",  # slate
+        "#e03070",  # hot pink
+        "#4060e0",  # royal blue
+        "#30a060",  # green
+        "#e07020",  # orange
+        "#a040d0",  # purple
+        "#d0a020",  # gold
+        "#20a0c0",  # cyan
+        "#d04040",  # red
+        "#40b0b0",  # teal
+        "#80b030",  # lime
+        "#c060a0",  # magenta
+        "#6080d0",  # cornflower
+        "#e09030",  # amber
+        "#3090e0",  # sky blue
+        "#a0c040",  # yellow-green
+        "#d06060",  # coral
+        "#5070b0",  # steel blue
+        "#50c070",  # mint
+        "#c04880",  # raspberry
+        "#7090c0",  # periwinkle
     ]
     colors: dict[int, str] = {}
     idx = 0
@@ -112,13 +112,32 @@ def generate_3d_explorer(
             }
         )
 
+    issue_details: list[dict] = []
+    for i, issue in enumerate(issues):
+        body = issue.get("body") or ""
+        if len(body) > 200:
+            body = body[:200] + "..."
+        tid = result.topics[i] if i < len(result.topics) else -1
+        issue_details.append(
+            {
+                "number": issue["number"],
+                "title": issue["title"],
+                "body": body,
+                "url": issue.get("url", ""),
+                "labels": issue.get("labels", []),
+                "created_at": issue.get("created_at", ""),
+                "topic": result.get_label(tid),
+            }
+        )
+
     points_json = json.dumps(points, ensure_ascii=False)
     colors_json = json.dumps(
         {str(k): v for k, v in topic_colors.items()}, ensure_ascii=False
     )
     legend_json = json.dumps(legend_entries, ensure_ascii=False)
+    details_json = json.dumps(issue_details, ensure_ascii=False)
 
-    html = _build_html(points_json, colors_json, legend_json)
+    html = _build_html(points_json, colors_json, legend_json, details_json)
     out_path.write_text(html, encoding="utf-8")
 
     log.info("Saved 3-D explorer -> %s", out_path)
@@ -131,6 +150,7 @@ def _build_html(
     points_json: str,
     colors_json: str,
     legend_json: str,
+    details_json: str,
 ) -> str:
     """Return the complete HTML string with embedded data and Three.js code."""
     return (
@@ -237,6 +257,31 @@ def _build_html(
         '  transition: background 0.15s;\n'
         '}\n'
         '#view-switcher a:hover { background: #f0f6ff; }\n'
+        '#issue-card-backdrop {\n'
+        '  display:none; position:fixed; top:0;left:0; width:100%;height:100%;\n'
+        '  background:rgba(0,0,0,0.35); z-index:9998;\n'
+        '}\n'
+        '#issue-card {\n'
+        '  display:none; position:fixed; top:50%;left:50%;\n'
+        '  transform:translate(-50%,-50%); max-width:520px; width:90%;\n'
+        '  max-height:80vh; overflow-y:auto; background:#fff;\n'
+        '  border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.28);\n'
+        '  z-index:9999; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;\n'
+        '  color:#1a1a1a;\n'
+        '}\n'
+        '#card-header { display:flex; align-items:flex-start; justify-content:space-between; padding:20px 20px 12px; border-bottom:1px solid #e8e8e8; }\n'
+        '#card-title { font-size:16px; font-weight:600; line-height:1.4; margin-right:12px; word-break:break-word; }\n'
+        '#card-number { font-size:14px; color:#656d76; font-weight:400; }\n'
+        '#card-close { background:none; border:none; font-size:22px; color:#656d76; cursor:pointer; padding:0 4px; line-height:1; flex-shrink:0; border-radius:4px; }\n'
+        '#card-close:hover { background:#f0f0f0; color:#1a1a1a; }\n'
+        '#card-topic { padding:8px 20px; font-size:12px; color:#656d76; background:#f6f8fa; }\n'
+        '#card-body { padding:16px 20px; font-size:14px; line-height:1.6; color:#333; white-space:pre-wrap; word-break:break-word; }\n'
+        '#card-labels { padding:4px 20px 12px; display:flex; flex-wrap:wrap; gap:6px; }\n'
+        '.card-label-pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:500; background:#ddf4ff; color:#0969da; border:1px solid #b6e3ff; white-space:nowrap; }\n'
+        '#card-footer { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-top:1px solid #e8e8e8; font-size:13px; }\n'
+        '#card-date { color:#656d76; }\n'
+        '#card-link { color:#0969da; text-decoration:underline; font-weight:500; }\n'
+        '#card-link:hover { color:#0550ae; }\n'
         '</style>\n'
         '<script type="importmap">\n'
         '{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js",'
@@ -247,6 +292,14 @@ def _build_html(
         '<div id="title-banner">Issue Landscape<small>3D Explorer</small></div>\n'
         '<div id="tooltip"></div>\n'
         '<div id="legend"></div>\n'
+        '<div id="issue-card-backdrop"></div>\n'
+        '<div id="issue-card" role="dialog" aria-modal="true">\n'
+        '  <div id="card-header"><span id="card-title"></span><button id="card-close" aria-label="Close">&times;</button></div>\n'
+        '  <div id="card-topic"></div>\n'
+        '  <div id="card-body"></div>\n'
+        '  <div id="card-labels"></div>\n'
+        '  <div id="card-footer"><span id="card-date"></span><a id="card-link" href="#" target="_blank" rel="noopener">Open on GitHub &#8594;</a></div>\n'
+        '</div>\n'
         '<div id="view-switcher">\n'
         '  <a href="landscape-2d.html">View in 2D &#x2197;</a>\n'
         '  <a href="timeline.html">Timeline &#x2197;</a>\n'
@@ -259,6 +312,7 @@ def _build_html(
         'const DATA_POINTS = ' + points_json + ';\n'
         'const TOPIC_COLORS = ' + colors_json + ';\n'
         'const LEGEND_ENTRIES = ' + legend_json + ';\n'
+        'const ISSUE_DETAILS = ' + details_json + ';\n'
         '\n'
         'const scene  = new THREE.Scene();\n'
         'scene.background = new THREE.Color(0xf8f8f5);\n'
@@ -381,10 +435,47 @@ def _build_html(
         '  }\n'
         '}\n'
         '\n'
+        '// ── Detail card ────────────────────────────────────────────\n'
+        'const card = document.getElementById("issue-card");\n'
+        'const backdrop = document.getElementById("issue-card-backdrop");\n'
+        'const cardTitle = document.getElementById("card-title");\n'
+        'const cardTopic = document.getElementById("card-topic");\n'
+        'const cardBody = document.getElementById("card-body");\n'
+        'const cardLabels = document.getElementById("card-labels");\n'
+        'const cardDate = document.getElementById("card-date");\n'
+        'const cardLink = document.getElementById("card-link");\n'
+        'const cardClose = document.getElementById("card-close");\n'
+        '\n'
+        'function showCard(issue) {\n'
+        '  cardTitle.innerHTML = \'<span id="card-number">#\' + issue.number + \'</span> \' +\n'
+        '    issue.title.replace(/</g, "&lt;").replace(/>/g, "&gt;");\n'
+        '  cardTopic.textContent = issue.topic || "";\n'
+        '  cardBody.textContent = issue.body || "(no description)";\n'
+        '  cardLabels.innerHTML = "";\n'
+        '  (issue.labels || []).forEach(function(label) {\n'
+        '    const pill = document.createElement("span");\n'
+        '    pill.className = "card-label-pill";\n'
+        '    pill.textContent = label;\n'
+        '    cardLabels.appendChild(pill);\n'
+        '  });\n'
+        '  cardDate.textContent = issue.created_at ? issue.created_at.substring(0, 10) : "";\n'
+        '  cardLink.href = issue.url || "#";\n'
+        '  backdrop.style.display = "block";\n'
+        '  card.style.display = "block";\n'
+        '}\n'
+        '\n'
+        'function hideCard() {\n'
+        '  card.style.display = "none";\n'
+        '  backdrop.style.display = "none";\n'
+        '}\n'
+        '\n'
+        'cardClose.addEventListener("click", hideCard);\n'
+        'backdrop.addEventListener("click", hideCard);\n'
+        'document.addEventListener("keydown", function(e) { if (e.key === "Escape") hideCard(); });\n'
+        '\n'
         'function onClick(event) {\n'
-        '  if (hoveredIndex >= 0) {\n'
-        '    const url = DATA_POINTS[hoveredIndex].url;\n'
-        '    if (url) window.open(url, "_blank", "noopener");\n'
+        '  if (hoveredIndex >= 0 && ISSUE_DETAILS[hoveredIndex]) {\n'
+        '    showCard(ISSUE_DETAILS[hoveredIndex]);\n'
         '  }\n'
         '}\n'
         '\n'

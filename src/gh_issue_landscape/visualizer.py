@@ -132,3 +132,129 @@ def print_cli_summary(
     print(f"  Uncategorized (outliers): {outlier_count} issues")
     print("=" * 60)
     print()
+
+
+def generate_timeline(
+    result: PipelineResult,
+    issues: list[dict],
+    output_dir: str = "./output",
+) -> Path:
+    """Generate a self-contained interactive timeline of topic evolution.
+
+    Attempts to use BERTopic's ``topics_over_time()`` for the primary
+    computation.  When that fails (common with small datasets) or returns
+    an empty frame, falls back to a manual month-level aggregation.
+
+    The resulting Plotly line chart is saved as a standalone HTML file at
+    ``{output_dir}/timeline.html``.
+    """
+    import pandas as pd
+    import plotly.graph_objects as go
+    import plotly.io as pio
+
+    out_path = Path(output_dir) / "timeline.html"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    docs = [f"{issue['title']}\n{issue.get('body') or ''}" for issue in issues]
+    timestamps = [issue["created_at"] for issue in issues]
+
+    # ------------------------------------------------------------------
+    # Try the native BERTopic method first
+    # ------------------------------------------------------------------
+    topics_over_time: pd.DataFrame | None = None
+    try:
+        tot = result.topic_model.topics_over_time(
+            docs=docs,
+            timestamps=timestamps,
+        )
+        if tot is not None and not tot.empty:
+            topics_over_time = tot
+            log.info("topics_over_time() returned %d rows.", len(tot))
+    except Exception as exc:
+        log.warning("topics_over_time() failed (%s); falling back to manual aggregation.", exc)
+
+    # ------------------------------------------------------------------
+    # Build the Plotly figure
+    # ------------------------------------------------------------------
+    fig = go.Figure()
+
+    if topics_over_time is not None:
+        # Filter out outlier topic (-1)
+        df = topics_over_time[topics_over_time["Topic"] != -1].copy()
+
+        for tid in sorted(df["Topic"].unique()):
+            subset = df[df["Topic"] == tid].sort_values("Timestamp")
+            label = result.get_label(int(tid))
+            fig.add_trace(
+                go.Scatter(
+                    x=subset["Timestamp"],
+                    y=subset["Frequency"],
+                    mode="lines+markers",
+                    name=label,
+                    hovertemplate=(
+                        "<b>%{meta}</b><br>"
+                        "Date: %{x|%Y-%m}<br>"
+                        "Count: %{y}<extra></extra>"
+                    ),
+                    meta=[label] * len(subset),
+                )
+            )
+    else:
+        # ------------------------------------------------------------------
+        # Manual fallback: group by month and topic
+        # ------------------------------------------------------------------
+        log.info("Using manual month-level aggregation for timeline.")
+
+        records: list[dict] = []
+        for issue, tid in zip(issues, result.topics):
+            if tid == -1:
+                continue
+            created = pd.Timestamp(issue["created_at"])
+            records.append(
+                {
+                    "month": created.to_period("M").to_timestamp(),
+                    "topic": tid,
+                }
+            )
+
+        if records:
+            df_manual = pd.DataFrame(records)
+            counts = (
+                df_manual.groupby(["month", "topic"])
+                .size()
+                .reset_index(name="count")
+            )
+
+            for tid in sorted(counts["topic"].unique()):
+                subset = counts[counts["topic"] == tid].sort_values("month")
+                label = result.get_label(int(tid))
+                fig.add_trace(
+                    go.Scatter(
+                        x=subset["month"],
+                        y=subset["count"],
+                        mode="lines+markers",
+                        name=label,
+                        hovertemplate=(
+                            "<b>%{meta}</b><br>"
+                            "Date: %{x|%Y-%m}<br>"
+                            "Count: %{y}<extra></extra>"
+                        ),
+                        meta=[label] * len(subset),
+                    )
+                )
+
+    fig.update_layout(
+        title="Topic Evolution Over Time",
+        xaxis_title="Date",
+        yaxis_title="Issue Count",
+        hovermode="x unified",
+        legend_title="Topic",
+        template="plotly_white",
+    )
+
+    html = pio.to_html(fig, full_html=True, include_plotlyjs=True)
+    out_path.write_text(html, encoding="utf-8")
+    log.info("Saved topic timeline → %s", out_path)
+    print(f"  -> {out_path}")
+
+    return out_path.resolve()

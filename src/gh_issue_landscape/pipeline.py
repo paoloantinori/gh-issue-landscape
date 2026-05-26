@@ -75,6 +75,7 @@ class PipelineResult:
     topic_info: pd.DataFrame
     umap_2d: np.ndarray
     topic_labels: dict[int, str] = field(default_factory=dict)
+    umap_3d: np.ndarray | None = None
 
     def topic_to_doc_indices(self) -> dict[int, list[int]]:
         """Map each topic_id to its list of document indices."""
@@ -154,6 +155,7 @@ def run_pipeline(
     texts: list[str],
     embeddings: np.ndarray,
     output_dir: str = "./output",
+    reduce_3d: bool = False,
 ) -> PipelineResult:
     """Run the BERTopic topic-modeling pipeline on pre-computed embeddings."""
     if len(texts) != embeddings.shape[0]:
@@ -218,6 +220,21 @@ def run_pipeline(
     umap_2d = np.asarray(topic_model.umap_model.embedding_, dtype=np.float32)
     log.info("2-D UMAP projection shape: %s", umap_2d.shape)
 
+    # Optional 3-D UMAP reduction on the original embeddings
+    umap_3d: np.ndarray | None = None
+    if reduce_3d:
+        log.info("Computing 3-D UMAP projection…")
+        umap_3d_model = UMAP(
+            n_components=3,
+            n_neighbors=15,
+            min_dist=0.1,
+            metric="cosine",
+            random_state=42,
+        )
+        umap_3d = umap_3d_model.fit_transform(embeddings)
+        umap_3d = np.asarray(umap_3d, dtype=np.float32)
+        log.info("3-D UMAP projection shape: %s", umap_3d.shape)
+
     log.info("Saving artifacts…")
     result = PipelineResult(
         topic_model=topic_model,
@@ -225,8 +242,13 @@ def run_pipeline(
         topic_info=topic_info,
         umap_2d=umap_2d,
         topic_labels=topic_labels,
+        umap_3d=umap_3d,
     )
     _save_umap_coordinates(umap_2d, data_dir)
+    if umap_3d is not None:
+        umap_3d_path = data_dir / "umap-3d.npy"
+        np.save(umap_3d_path, umap_3d)
+        log.info("Saved 3-D UMAP coordinates → %s", umap_3d_path)
     _save_topics_json(result, data_dir)
     _save_model(topic_model, data_dir)
 

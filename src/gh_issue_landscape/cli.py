@@ -39,6 +39,8 @@ import click
     show_default=True,
     help="Directory to write output artifacts.",
 )
+@click.option("--3d", "three_d", is_flag=True, default=False, help="Generate 3D Three.js interactive explorer.")
+@click.option("--timeline", is_flag=True, default=False, help="Generate topic timeline chart.")
 def main(
     repo: str,
     embedding: str,
@@ -46,6 +48,8 @@ def main(
     api_key: str | None,
     state: str,
     output: str,
+    three_d: bool,
+    timeline: bool,
 ) -> None:
     """Generate a semantic landscape visualization of GitHub issues.
 
@@ -57,6 +61,8 @@ def main(
     click.echo(f"API Key    : {'***' if api_key else '(not set)'}")
     click.echo(f"State      : {state}")
     click.echo(f"Output dir : {output}")
+    click.echo(f"3D explorer: {'yes' if three_d else 'no'}")
+    click.echo(f"Timeline   : {'yes' if timeline else 'no'}")
     click.echo()
 
     try:
@@ -87,7 +93,7 @@ def main(
         click.echo("═══ Running topic model ═══")
         from gh_issue_landscape.pipeline import run_pipeline
 
-        result = run_pipeline(texts, embeddings, output_dir=output)
+        result = run_pipeline(texts, embeddings, output_dir=output, reduce_3d=three_d)
         n_topics = len([t for t in set(result.topics) if t != -1])
         n_outliers = result.topics.count(-1)
         click.echo(
@@ -103,6 +109,16 @@ def main(
         print_cli_summary(result, issues)
         click.echo()
         click.echo(f"Landscape map: {map_path}")
+
+        if three_d:
+            from gh_issue_landscape.viewer_3d import generate_3d_explorer
+            explorer_path = generate_3d_explorer(result, issues, output_dir=output)
+            click.echo(f"3D explorer: {explorer_path}")
+
+        if timeline:
+            from gh_issue_landscape.visualizer import generate_timeline
+            timeline_path = generate_timeline(result, issues, output_dir=output)
+            click.echo(f"Timeline: {timeline_path}")
 
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc

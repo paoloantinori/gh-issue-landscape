@@ -17,31 +17,44 @@ from gh_issue_landscape.pipeline import PipelineResult
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Color palette -- 30 visually distinct colors for topic clusters
-# ---------------------------------------------------------------------------
-_PALETTE = [
-    "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231",
-    "#911eb4", "#42d4f4", "#f032e6", "#bfef45", "#fabed4",
-    "#469990", "#dcbeff", "#9a6324", "#fffac8", "#800000",
-    "#aaffc3", "#808000", "#ffd8b1", "#000075", "#a9a9a9",
-    "#e6beff", "#1abc9c", "#ff6348", "#7bed9f", "#70a1ff",
-    "#5352ed", "#ff4757", "#2ed573", "#ffa502", "#3742fa",
-]
-
-_OUTLIER_COLOR = "#555555"
+_OUTLIER_COLOR = "#999999"
 
 
 def _assign_topic_colors(topic_ids: set[int]) -> dict[int, str]:
-    """Map each topic id to a hex color string."""
+    """Map each topic id to a hex color string.
+
+    Uses a muted cartographic palette that reads well on light backgrounds.
+    """
+    palette = [
+        "#9b4d6a",  # rose
+        "#6b70a8",  # periwinkle
+        "#7aab88",  # sage
+        "#b07040",  # sienna
+        "#a07098",  # orchid
+        "#7a8b50",  # olive
+        "#4080a0",  # teal
+        "#5878a0",  # steel
+        "#40908a",  # cyan-teal
+        "#388040",  # emerald
+        "#8a8030",  # gold-olive
+        "#9088b0",  # lavender
+        "#a88050",  # amber
+        "#b04030",  # brick
+        "#7840a0",  # purple
+        "#a06060",  # dusty rose
+        "#4890b0",  # sky blue
+        "#80a040",  # lime
+        "#a04888",  # magenta
+        "#6070a0",  # slate
+    ]
     colors: dict[int, str] = {}
-    palette_idx = 0
+    idx = 0
     for tid in sorted(topic_ids):
         if tid == -1:
             colors[tid] = _OUTLIER_COLOR
         else:
-            colors[tid] = _PALETTE[palette_idx % len(_PALETTE)]
-            palette_idx += 1
+            colors[tid] = palette[idx % len(palette)]
+            idx += 1
     return colors
 
 
@@ -59,27 +72,7 @@ def generate_3d_explorer(
     issues: list[dict],
     output_dir: str = "./output",
 ) -> Path:
-    """Generate a self-contained HTML file with a Three.js 3D point cloud.
-
-    Parameters
-    ----------
-    result:
-        A fitted ``PipelineResult`` that **must** contain ``umap_3d``.
-    issues:
-        The list of issue dicts (with ``number``, ``title``, ``url`` keys).
-    output_dir:
-        Directory where ``landscape-3d.html`` will be written.
-
-    Returns
-    -------
-    Path
-        Absolute path to the generated HTML file.
-
-    Raises
-    ------
-    ValueError
-        If ``result.umap_3d`` is ``None``.
-    """
+    """Generate a self-contained HTML file with a Three.js 3D point cloud."""
     if result.umap_3d is None:
         raise ValueError(
             "PipelineResult.umap_3d is None. "
@@ -90,12 +83,9 @@ def generate_3d_explorer(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     coords = _normalize_coords(result.umap_3d)
-
-    # Collect unique topic ids and assign colors
     topic_ids = set(result.topics)
     topic_colors = _assign_topic_colors(topic_ids)
 
-    # Build per-point data
     points: list[dict] = []
     for i, issue in enumerate(issues):
         tid = result.topics[i]
@@ -112,7 +102,6 @@ def generate_3d_explorer(
             }
         )
 
-    # Build legend entries (sorted by topic id, outliers last)
     legend_entries: list[dict] = []
     for tid in sorted(topic_ids):
         legend_entries.append(
@@ -123,7 +112,6 @@ def generate_3d_explorer(
             }
         )
 
-    # Serialize data for embedding
     points_json = json.dumps(points, ensure_ascii=False)
     colors_json = json.dumps(
         {str(k): v for k, v in topic_colors.items()}, ensure_ascii=False
@@ -139,20 +127,12 @@ def generate_3d_explorer(
     return out_path.resolve()
 
 
-# ---------------------------------------------------------------------------
-# HTML template
-# ---------------------------------------------------------------------------
-
 def _build_html(
     points_json: str,
     colors_json: str,
     legend_json: str,
 ) -> str:
     """Return the complete HTML string with embedded data and Three.js code."""
-    # Note: we use {{ and }} inside the JS blocks so Python's str.format /
-    # f-strings don't interfere with JS braces.  The three data blobs are
-    # injected via simple string concatenation.
-
     return (
         '<!DOCTYPE html>\n'
         '<html lang="en">\n'
@@ -160,74 +140,103 @@ def _build_html(
         '<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
         '<title>Issue Landscape — 3D Explorer</title>\n'
+        '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+        '<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;700&display=swap" rel="stylesheet">\n'
         '<style>\n'
         'html, body {\n'
         '  margin: 0; padding: 0; overflow: hidden;\n'
         '  width: 100%; height: 100%;\n'
-        '  background: #1a1a2e;\n'
-        '  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;\n'
-        '  color: #e0e0e0;\n'
+        '  background: #f8f8f5;\n'
+        '  font-family: "Roboto Mono", monospace;\n'
+        '  color: #333;\n'
         '}\n'
         'canvas { display: block; }\n'
+        '#title-banner {\n'
+        '  position: fixed;\n'
+        '  top: 16px; left: 16px;\n'
+        '  z-index: 100;\n'
+        '  font-size: 24px;\n'
+        '  font-weight: 400;\n'
+        '  color: #1a1a1a;\n'
+        '  padding: 8px 16px;\n'
+        '  background: rgba(248, 248, 245, 0.9);\n'
+        '  border: 1px solid #ccc;\n'
+        '  backdrop-filter: blur(6px);\n'
+        '}\n'
+        '#title-banner small {\n'
+        '  display: block;\n'
+        '  font-size: 11px;\n'
+        '  color: #888;\n'
+        '  margin-top: 2px;\n'
+        '  letter-spacing: 1px;\n'
+        '  text-transform: uppercase;\n'
+        '}\n'
         '#tooltip {\n'
         '  position: fixed;\n'
         '  pointer-events: none;\n'
-        '  background: rgba(10, 10, 30, 0.92);\n'
-        '  color: #f0f0f0;\n'
-        '  padding: 8px 12px;\n'
+        '  background: rgba(255, 255, 255, 0.95);\n'
+        '  color: #1a1a1a;\n'
+        '  padding: 8px 14px;\n'
         '  border-radius: 6px;\n'
-        '  font-size: 13px;\n'
+        '  font-size: 12px;\n'
+        '  font-family: "Roboto Mono", monospace;\n'
         '  max-width: 380px;\n'
         '  line-height: 1.4;\n'
         '  display: none;\n'
         '  z-index: 100;\n'
-        '  border: 1px solid rgba(255,255,255,0.12);\n'
-        '  box-shadow: 0 4px 16px rgba(0,0,0,0.5);\n'
+        '  border: 1px solid #ddd;\n'
+        '  box-shadow: 0 2px 8px rgba(0,0,0,0.1);\n'
         '}\n'
-        '#tooltip .tt-number { font-weight: 700; color: #90caf9; }\n'
-        '#tooltip .tt-label  { font-size: 11px; color: #aaa; margin-top: 3px; }\n'
+        '#tooltip .tt-number { font-weight: 700; color: #0969da; }\n'
+        '#tooltip .tt-label  { font-size: 11px; color: #888; margin-top: 3px; }\n'
         '#legend {\n'
         '  position: fixed;\n'
         '  top: 16px; right: 16px;\n'
-        '  background: rgba(10, 10, 30, 0.85);\n'
-        '  border: 1px solid rgba(255,255,255,0.1);\n'
-        '  border-radius: 8px;\n'
+        '  background: rgba(248, 248, 245, 0.92);\n'
+        '  border: 1px solid #ddd;\n'
+        '  border-radius: 4px;\n'
         '  padding: 12px 16px;\n'
         '  max-height: calc(100vh - 48px);\n'
         '  overflow-y: auto;\n'
         '  z-index: 50;\n'
         '  min-width: 160px;\n'
-        '  box-shadow: 0 4px 20px rgba(0,0,0,0.4);\n'
+        '  box-shadow: 0 1px 4px rgba(0,0,0,0.08);\n'
+        '  backdrop-filter: blur(6px);\n'
         '}\n'
         '#legend h3 {\n'
-        '  margin: 0 0 10px 0; font-size: 13px;\n'
-        '  text-transform: uppercase; letter-spacing: 1px;\n'
+        '  margin: 0 0 10px 0; font-size: 11px;\n'
+        '  text-transform: uppercase; letter-spacing: 1.5px;\n'
         '  color: #999;\n'
+        '  font-family: "Roboto Mono", monospace;\n'
         '}\n'
         '.legend-item {\n'
         '  display: flex; align-items: center;\n'
-        '  margin-bottom: 6px; font-size: 12px;\n'
+        '  margin-bottom: 5px; font-size: 11px;\n'
+        '  font-family: "Roboto Mono", monospace;\n'
+        '  color: #555;\n'
         '}\n'
         '.legend-swatch {\n'
-        '  width: 12px; height: 12px;\n'
-        '  border-radius: 3px; margin-right: 8px;\n'
+        '  width: 10px; height: 10px;\n'
+        '  border-radius: 50%; margin-right: 8px;\n'
         '  flex-shrink: 0;\n'
         '}\n'
         '#legend::-webkit-scrollbar { width: 4px; }\n'
-        '#legend::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }\n'
+        '#legend::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 2px; }\n'
         '#view-switcher {\n'
         '  position: fixed; bottom: 20px; right: 20px; z-index: 100;\n'
         '  display: flex; gap: 8px;\n'
         '}\n'
         '#view-switcher a {\n'
         '  display: inline-block; padding: 8px 16px;\n'
-        '  background: rgba(10, 10, 30, 0.85); color: #90caf9;\n'
-        '  border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;\n'
+        '  background: rgba(248, 248, 245, 0.92); color: #0969da;\n'
+        '  border: 1px solid #d0d7de; border-radius: 8px;\n'
         '  font-size: 13px; font-weight: 500; text-decoration: none;\n'
-        '  font-family: "Segoe UI", system-ui, sans-serif;\n'
+        '  font-family: "Roboto Mono", monospace;\n'
+        '  box-shadow: 0 1px 3px rgba(0,0,0,0.08);\n'
         '  transition: background 0.15s;\n'
         '}\n'
-        '#view-switcher a:hover { background: rgba(30, 30, 60, 0.95); }\n'
+        '#view-switcher a:hover { background: #f0f6ff; }\n'
         '</style>\n'
         '<script type="importmap">\n'
         '{"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js",'
@@ -235,6 +244,7 @@ def _build_html(
         '</script>\n'
         '</head>\n'
         '<body>\n'
+        '<div id="title-banner">Issue Landscape<small>3D Explorer</small></div>\n'
         '<div id="tooltip"></div>\n'
         '<div id="legend"></div>\n'
         '<div id="view-switcher">\n'
@@ -246,14 +256,12 @@ def _build_html(
         'import * as THREE from "three";\n'
         'import { OrbitControls } from "three/addons/controls/OrbitControls.js";\n'
         '\n'
-        '// ── Embedded data ──────────────────────────────────────────\n'
         'const DATA_POINTS = ' + points_json + ';\n'
         'const TOPIC_COLORS = ' + colors_json + ';\n'
         'const LEGEND_ENTRIES = ' + legend_json + ';\n'
         '\n'
-        '// ── Scene setup ────────────────────────────────────────────\n'
         'const scene  = new THREE.Scene();\n'
-        'scene.background = new THREE.Color(0x1a1a2e);\n'
+        'scene.background = new THREE.Color(0xf8f8f5);\n'
         '\n'
         'const camera = new THREE.PerspectiveCamera(\n'
         '  60, window.innerWidth / window.innerHeight, 0.01, 100\n'
@@ -265,7 +273,6 @@ def _build_html(
         'renderer.setSize(window.innerWidth, window.innerHeight);\n'
         'document.body.appendChild(renderer.domElement);\n'
         '\n'
-        '// ── Controls ───────────────────────────────────────────────\n'
         'const controls = new OrbitControls(camera, renderer.domElement);\n'
         'controls.enableDamping  = true;\n'
         'controls.dampingFactor  = 0.08;\n'
@@ -274,7 +281,6 @@ def _build_html(
         'controls.minDistance    = 0.5;\n'
         'controls.maxDistance    = 8;\n'
         '\n'
-        '// ── Build point cloud ──────────────────────────────────────\n'
         'const count = DATA_POINTS.length;\n'
         'const positions = new Float32Array(count * 3);\n'
         'const colors    = new Float32Array(count * 3);\n'
@@ -286,13 +292,11 @@ def _build_html(
         '  positions[i * 3]     = p.x;\n'
         '  positions[i * 3 + 1] = p.y;\n'
         '  positions[i * 3 + 2] = p.z;\n'
-        '\n'
-        '  const hex = TOPIC_COLORS[String(p.topic_id)] || "#555555";\n'
+        '  const hex = TOPIC_COLORS[String(p.topic_id)] || "#999999";\n'
         '  const c = new THREE.Color(hex);\n'
         '  colors[i * 3]     = c.r;\n'
         '  colors[i * 3 + 1] = c.g;\n'
         '  colors[i * 3 + 2] = c.b;\n'
-        '\n'
         '  sizes[i] = BASE_SIZE;\n'
         '}\n'
         '\n'
@@ -301,7 +305,6 @@ def _build_html(
         'geometry.setAttribute("color",    new THREE.BufferAttribute(colors, 3));\n'
         'geometry.setAttribute("size",     new THREE.BufferAttribute(sizes, 1));\n'
         '\n'
-        '// Custom shader so we can control per-point size\n'
         'const material = new THREE.ShaderMaterial({\n'
         '  vertexShader: `\n'
         '    attribute float size;\n'
@@ -329,39 +332,34 @@ def _build_html(
         '\n'
         'const pointCloud = new THREE.Points(geometry, material);\n'
         'scene.add(pointCloud);\n'
-        '\n'
-        '// Subtle ambient light (not strictly needed for points but nice for feel)\n'
         'scene.add(new THREE.AmbientLight(0xffffff, 0.3));\n'
         '\n'
-        '// ── Raycaster / interaction ────────────────────────────────\n'
+        '// Subtle grid for spatial reference\n'
+        'const grid = new THREE.GridHelper(3, 12, 0xdddddd, 0xeeeeee);\n'
+        'grid.position.y = -1.1;\n'
+        'scene.add(grid);\n'
+        '\n'
         'const raycaster = new THREE.Raycaster();\n'
         'raycaster.params.Points.threshold = 0.06;\n'
         'const mouse = new THREE.Vector2();\n'
         'const tooltipEl = document.getElementById("tooltip");\n'
-        '\n'
         'let hoveredIndex = -1;\n'
         '\n'
         'function onPointerMove(event) {\n'
         '  mouse.x =  (event.clientX / window.innerWidth)  * 2 - 1;\n'
         '  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;\n'
-        '\n'
         '  raycaster.setFromCamera(mouse, camera);\n'
         '  const intersects = raycaster.intersectObject(pointCloud);\n'
-        '\n'
         '  const sizeAttr = geometry.getAttribute("size");\n'
-        '\n'
-        '  // Reset previous highlight\n'
         '  if (hoveredIndex >= 0) {\n'
         '    sizeAttr.setX(hoveredIndex, BASE_SIZE);\n'
         '    sizeAttr.needsUpdate = true;\n'
         '  }\n'
-        '\n'
         '  if (intersects.length > 0) {\n'
         '    const idx = intersects[0].index;\n'
         '    hoveredIndex = idx;\n'
         '    sizeAttr.setX(idx, BASE_SIZE * 2.5);\n'
         '    sizeAttr.needsUpdate = true;\n'
-        '\n'
         '    const p = DATA_POINTS[idx];\n'
         '    tooltipEl.innerHTML =\n'
         '      \'<span class="tt-number">#\' + p.number + \'</span> \' +\n'
@@ -370,16 +368,11 @@ def _build_html(
         '    tooltipEl.style.display = "block";\n'
         '    tooltipEl.style.left = (event.clientX + 14) + "px";\n'
         '    tooltipEl.style.top  = (event.clientY + 14) + "px";\n'
-        '\n'
-        '    // Keep tooltip on screen\n'
         '    const rect = tooltipEl.getBoundingClientRect();\n'
-        '    if (rect.right > window.innerWidth) {\n'
+        '    if (rect.right > window.innerWidth)\n'
         '      tooltipEl.style.left = (event.clientX - rect.width - 14) + "px";\n'
-        '    }\n'
-        '    if (rect.bottom > window.innerHeight) {\n'
+        '    if (rect.bottom > window.innerHeight)\n'
         '      tooltipEl.style.top = (event.clientY - rect.height - 14) + "px";\n'
-        '    }\n'
-        '\n'
         '    renderer.domElement.style.cursor = "pointer";\n'
         '  } else {\n'
         '    hoveredIndex = -1;\n'
@@ -398,7 +391,6 @@ def _build_html(
         'window.addEventListener("pointermove", onPointerMove, false);\n'
         'window.addEventListener("click", onClick, false);\n'
         '\n'
-        '// ── Legend ─────────────────────────────────────────────────\n'
         'const legendEl = document.getElementById("legend");\n'
         'let legendHTML = "<h3>Topics</h3>";\n'
         'for (const entry of LEGEND_ENTRIES) {\n'
@@ -409,14 +401,12 @@ def _build_html(
         '}\n'
         'legendEl.innerHTML = legendHTML;\n'
         '\n'
-        '// ── Resize handling ────────────────────────────────────────\n'
         'window.addEventListener("resize", () => {\n'
         '  camera.aspect = window.innerWidth / window.innerHeight;\n'
         '  camera.updateProjectionMatrix();\n'
         '  renderer.setSize(window.innerWidth, window.innerHeight);\n'
         '});\n'
         '\n'
-        '// ── Render loop ────────────────────────────────────────────\n'
         'function animate() {\n'
         '  requestAnimationFrame(animate);\n'
         '  controls.update();\n'

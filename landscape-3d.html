@@ -59,6 +59,19 @@ canvas { display: block; }
 }
 #legend::-webkit-scrollbar { width: 4px; }
 #legend::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+#view-switcher {
+  position: fixed; bottom: 20px; right: 20px; z-index: 100;
+  display: flex; gap: 8px;
+}
+#view-switcher a {
+  display: inline-block; padding: 8px 16px;
+  background: rgba(10, 10, 30, 0.85); color: #90caf9;
+  border: 1px solid rgba(255,255,255,0.15); border-radius: 8px;
+  font-size: 13px; font-weight: 500; text-decoration: none;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  transition: background 0.15s;
+}
+#view-switcher a:hover { background: rgba(30, 30, 60, 0.95); }
 </style>
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.170.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.170.0/examples/jsm/"}}
@@ -67,6 +80,10 @@ canvas { display: block; }
 <body>
 <div id="tooltip"></div>
 <div id="legend"></div>
+<div id="view-switcher">
+  <a href="landscape-2d.html">View in 2D &#x2197;</a>
+  <a href="timeline.html">Timeline &#x2197;</a>
+</div>
 
 <script type="module">
 import * as THREE from "three";

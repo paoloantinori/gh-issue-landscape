@@ -266,7 +266,7 @@ _DETAIL_CARD_JS_TEMPLATE = """\
   function hookDeckClick() {
     if (window.datamap && window.datamap.deckgl) {
       window.datamap.deckgl.setProps({
-        controller: {scrollZoom: {speed: 0.3, smooth: false}},
+        controller: {scrollZoom: {speed: 0.05, smooth: true}},
         onClick: function(info) {
           if (info && info.picked && info.index != null) {
             var issue = issueByIndex[info.index];

@@ -33,22 +33,21 @@ def _build_topic_summaries(
     topic_to_docs = result.topic_to_doc_indices()
 
     summaries: list[dict] = []
-    for _, row in result.topic_info.iterrows():
-        from gh_issue_landscape.pipeline import _to_int
-        tid = _to_int(row["Topic"])
+    for tid in sorted(topic_to_docs.keys()):
         if tid == -1:
             continue
 
-        doc_indices = topic_to_docs.get(tid, [])[:3]
+        doc_indices = topic_to_docs.get(tid, [])
+        keywords = _get_keywords(result.topic_model, tid, limit=5) if result.topic_model else []
         summaries.append(
             {
                 "topic_id": tid,
                 "label": result.get_label(tid),
-                "count": _to_int(row.get("Count", len(topic_to_docs.get(tid, [])))),
-                "keywords": _get_keywords(result.topic_model, tid, limit=5),
+                "count": len(doc_indices),
+                "keywords": keywords,
                 "top_issues": [
                     {"number": issues[i]["number"], "title": issues[i]["title"]}
-                    for i in doc_indices
+                    for i in doc_indices[:3]
                     if i < len(issues)
                 ],
             }

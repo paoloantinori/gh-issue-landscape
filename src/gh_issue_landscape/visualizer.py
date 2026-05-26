@@ -367,6 +367,7 @@ def generate_2d_map(
         hover_text=hover_texts,
         noise_label="Uncategorized",
         noise_color="#999999",
+        label_color_map=result.label_color_map(),
         inline_data=True,
         font_family="Roboto Mono",
         title="Issue Landscape",

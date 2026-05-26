@@ -13,47 +13,24 @@ from pathlib import Path
 
 import numpy as np
 
-from gh_issue_landscape.pipeline import PipelineResult
+from gh_issue_landscape.pipeline import (
+    OUTLIER_COLOR,
+    TOPIC_PALETTE,
+    PipelineResult,
+)
 
 log = logging.getLogger(__name__)
 
-_OUTLIER_COLOR = "#999999"
-
 
 def _assign_topic_colors(topic_ids: set[int]) -> dict[int, str]:
-    """Map each topic id to a hex color string.
-
-    Uses a muted cartographic palette that reads well on light backgrounds.
-    """
-    palette = [
-        "#e03070",  # hot pink
-        "#4060e0",  # royal blue
-        "#30a060",  # green
-        "#e07020",  # orange
-        "#a040d0",  # purple
-        "#d0a020",  # gold
-        "#20a0c0",  # cyan
-        "#d04040",  # red
-        "#40b0b0",  # teal
-        "#80b030",  # lime
-        "#c060a0",  # magenta
-        "#6080d0",  # cornflower
-        "#e09030",  # amber
-        "#3090e0",  # sky blue
-        "#a0c040",  # yellow-green
-        "#d06060",  # coral
-        "#5070b0",  # steel blue
-        "#50c070",  # mint
-        "#c04880",  # raspberry
-        "#7090c0",  # periwinkle
-    ]
+    """Map each topic id to a hex color from the shared palette."""
     colors: dict[int, str] = {}
     idx = 0
     for tid in sorted(topic_ids):
         if tid == -1:
-            colors[tid] = _OUTLIER_COLOR
+            colors[tid] = OUTLIER_COLOR
         else:
-            colors[tid] = palette[idx % len(palette)]
+            colors[tid] = TOPIC_PALETTE[idx % len(TOPIC_PALETTE)]
             idx += 1
     return colors
 

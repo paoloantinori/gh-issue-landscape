@@ -20,6 +20,31 @@ from umap import UMAP
 
 log = logging.getLogger(__name__)
 
+TOPIC_PALETTE = [
+    "#e03070",  # hot pink
+    "#4060e0",  # royal blue
+    "#30a060",  # green
+    "#e07020",  # orange
+    "#a040d0",  # purple
+    "#d0a020",  # gold
+    "#20a0c0",  # cyan
+    "#d04040",  # red
+    "#40b0b0",  # teal
+    "#80b030",  # lime
+    "#c060a0",  # magenta
+    "#6080d0",  # cornflower
+    "#e09030",  # amber
+    "#3090e0",  # sky blue
+    "#a0c040",  # yellow-green
+    "#d06060",  # coral
+    "#5070b0",  # steel blue
+    "#50c070",  # mint
+    "#c04880",  # raspberry
+    "#7090c0",  # periwinkle
+]
+
+OUTLIER_COLOR = "#999999"
+
 _STOPWORDS = frozenset(
     "a an and are as at be but by for from has have he her his i in is it its"
     " me my no not of on or our she that the their them they this to was we"
@@ -87,6 +112,19 @@ class PipelineResult:
     def get_label(self, tid: int) -> str:
         """Get the cleaned label for a topic, falling back to 'Topic N'."""
         return self.topic_labels.get(tid, f"Topic {tid}")
+
+    def label_color_map(self) -> dict[str, str]:
+        """Map each topic label string to a hex color from the shared palette."""
+        colors: dict[str, str] = {}
+        idx = 0
+        for tid in sorted(set(self.topics)):
+            label = self.get_label(tid)
+            if tid == -1:
+                colors[label] = OUTLIER_COLOR
+            else:
+                colors[label] = TOPIC_PALETTE[idx % len(TOPIC_PALETTE)]
+                idx += 1
+        return colors
 
 
 def _save_umap_coordinates(umap_2d: np.ndarray, data_dir: Path) -> None:

@@ -1,0 +1,24 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# Python bytecode
+*.pyc
+__pycache__/
+
+# Output and data
+output/
+*.npy
+*.npz
+data/model/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp

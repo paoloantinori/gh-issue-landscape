@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm>=8.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gh-issue-landscape"
+dynamic = ["version"]
+description = "Semantic 2D/3D visualizations of GitHub issues"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "bertopic>=0.16",
+    "datamapplot>=0.4",
+    "sentence-transformers>=3.0",
+    "openai>=1.0",
+    "umap-learn>=0.5",
+    "hdbscan>=0.8",
+    "click>=8.1",
+    "numpy>=1.24",
+]
+
+[project.scripts]
+gh-issue-landscape = "gh_issue_landscape.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+fallback_version = "0.1.0.dev0"

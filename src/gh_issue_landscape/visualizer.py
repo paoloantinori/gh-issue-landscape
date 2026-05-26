@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
@@ -57,6 +58,267 @@ def _build_topic_summaries(
     return summaries
 
 
+def _build_issue_data_json(
+    result: PipelineResult,
+    issues: list[dict],
+) -> str:
+    """Build a JSON array of issue metadata for the detail card overlay."""
+    records = []
+    for i, issue in enumerate(issues):
+        body = issue.get("body") or ""
+        if len(body) > 200:
+            body = body[:200] + "..."
+        tid = result.topics[i] if i < len(result.topics) else -1
+        records.append(
+            {
+                "number": issue["number"],
+                "title": issue["title"],
+                "body": body,
+                "url": issue.get("url", ""),
+                "labels": issue.get("labels", []),
+                "created_at": issue.get("created_at", ""),
+                "topic": result.get_label(tid),
+            }
+        )
+    return json.dumps(records, ensure_ascii=False)
+
+
+_DETAIL_CARD_CSS = """\
+<style id="issue-detail-card-styles">
+  #issue-card-backdrop {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 9998;
+  }
+  #issue-card {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 520px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.28);
+    z-index: 9999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a;
+    padding: 0;
+  }
+  #card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 20px 20px 12px 20px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  #card-title {
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-right: 12px;
+    word-break: break-word;
+  }
+  #card-number {
+    font-size: 14px;
+    color: #656d76;
+    font-weight: 400;
+  }
+  #card-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    color: #656d76;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    border-radius: 4px;
+    transition: background 0.15s, color 0.15s;
+  }
+  #card-close:hover {
+    background: #f0f0f0;
+    color: #1a1a1a;
+  }
+  #card-topic {
+    padding: 8px 20px;
+    font-size: 12px;
+    color: #656d76;
+    background: #f6f8fa;
+  }
+  #card-body {
+    padding: 16px 20px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #333;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #card-labels {
+    padding: 4px 20px 12px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .card-label-pill {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #ddf4ff;
+    color: #0969da;
+    border: 1px solid #b6e3ff;
+    white-space: nowrap;
+  }
+  #card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-top: 1px solid #e8e8e8;
+    font-size: 13px;
+  }
+  #card-date {
+    color: #656d76;
+  }
+  #card-link {
+    color: #0969da;
+    text-decoration: underline;
+    font-weight: 500;
+  }
+  #card-link:hover {
+    color: #0550ae;
+  }
+</style>
+"""
+
+_DETAIL_CARD_HTML = """\
+<div id="issue-card-backdrop"></div>
+<div id="issue-card" role="dialog" aria-modal="true">
+  <div id="card-header">
+    <span id="card-title"></span>
+    <button id="card-close" aria-label="Close">&times;</button>
+  </div>
+  <div id="card-topic"></div>
+  <div id="card-body"></div>
+  <div id="card-labels"></div>
+  <div id="card-footer">
+    <span id="card-date"></span>
+    <a id="card-link" href="#" target="_blank" rel="noopener">Open on GitHub &#8594;</a>
+  </div>
+</div>
+"""
+
+_DETAIL_CARD_JS_TEMPLATE = """\
+<script id="issue-detail-card-script">
+(function() {
+  const ISSUE_DATA = %s;
+
+  const issueMap = {};
+  ISSUE_DATA.forEach(function(d) { issueMap[d.number] = d; });
+
+  const card = document.getElementById('issue-card');
+  const backdrop = document.getElementById('issue-card-backdrop');
+  const cardTitle = document.getElementById('card-title');
+  const cardTopic = document.getElementById('card-topic');
+  const cardBody = document.getElementById('card-body');
+  const cardLabels = document.getElementById('card-labels');
+  const cardDate = document.getElementById('card-date');
+  const cardLink = document.getElementById('card-link');
+  const cardClose = document.getElementById('card-close');
+
+  function showCard(issue) {
+    cardTitle.innerHTML = '<span id="card-number">#' + issue.number + '</span> ' +
+      issue.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    cardTopic.textContent = issue.topic || '';
+    cardBody.textContent = issue.body || '(no description)';
+
+    cardLabels.innerHTML = '';
+    (issue.labels || []).forEach(function(label) {
+      var pill = document.createElement('span');
+      pill.className = 'card-label-pill';
+      pill.textContent = label;
+      cardLabels.appendChild(pill);
+    });
+
+    if (issue.created_at) {
+      cardDate.textContent = issue.created_at.substring(0, 10);
+    } else {
+      cardDate.textContent = '';
+    }
+
+    cardLink.href = issue.url || '#';
+    backdrop.style.display = 'block';
+    card.style.display = 'block';
+  }
+
+  function hideCard() {
+    card.style.display = 'none';
+    backdrop.style.display = 'none';
+  }
+
+  cardClose.addEventListener('click', hideCard);
+  backdrop.addEventListener('click', hideCard);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') hideCard();
+  });
+
+  // Hook into deck.gl canvas click events.
+  // When a point is hovered, deck.gl shows a .deck-tooltip with the hover text.
+  // On click, we read the tooltip content, parse the issue number, and show the card.
+  document.addEventListener('click', function(e) {
+    // Ignore clicks on the card itself or its backdrop
+    if (card.contains(e.target) || e.target === backdrop) return;
+
+    var tooltip = document.querySelector('.deck-tooltip');
+    if (!tooltip) return;
+
+    var text = tooltip.textContent || tooltip.innerText || '';
+    if (!text.trim()) return;
+
+    var match = text.match(/#(\\d+):/);
+    if (!match) return;
+
+    var num = parseInt(match[1], 10);
+    var issue = issueMap[num];
+    if (!issue) return;
+
+    showCard(issue);
+  });
+})();
+</script>
+"""
+
+
+def _inject_detail_card(
+    html_path: Path,
+    result: PipelineResult,
+    issues: list[dict],
+) -> None:
+    """Post-process DataMapPlot HTML to inject a click-to-detail card overlay."""
+    html = html_path.read_text(encoding="utf-8")
+
+    issue_json = _build_issue_data_json(result, issues)
+    js_block = _DETAIL_CARD_JS_TEMPLATE % issue_json
+
+    injection = _DETAIL_CARD_CSS + _DETAIL_CARD_HTML + js_block
+
+    # Inject before the closing </html> tag
+    if "</html>" in html:
+        html = html.replace("</html>", injection + "\n</html>")
+    else:
+        html += injection
+
+    html_path.write_text(html, encoding="utf-8")
+    log.info("Injected detail-card overlay into %s", html_path)
+
+
 def generate_2d_map(
     result: PipelineResult,
     issues: list[dict],
@@ -86,6 +348,10 @@ def generate_2d_map(
 
     fig.save(str(out_path))
     log.info("Saved interactive 2-D map → %s", out_path)
+
+    # Post-process: inject click-to-detail card
+    _inject_detail_card(out_path, result, issues)
+
     print(f"  -> {out_path}")
 
     return out_path.resolve()

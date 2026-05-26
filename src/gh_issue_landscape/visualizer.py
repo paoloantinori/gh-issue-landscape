@@ -218,27 +218,25 @@ _DETAIL_CARD_HTML = """\
 _DETAIL_CARD_JS_TEMPLATE = """\
 <script id="issue-detail-card-script">
 (function() {
-  const ISSUE_DATA = %s;
+  var ISSUE_DATA = %s;
+  var issueByIndex = {};
+  ISSUE_DATA.forEach(function(d, i) { issueByIndex[i] = d; });
 
-  const issueMap = {};
-  ISSUE_DATA.forEach(function(d) { issueMap[d.number] = d; });
-
-  const card = document.getElementById('issue-card');
-  const backdrop = document.getElementById('issue-card-backdrop');
-  const cardTitle = document.getElementById('card-title');
-  const cardTopic = document.getElementById('card-topic');
-  const cardBody = document.getElementById('card-body');
-  const cardLabels = document.getElementById('card-labels');
-  const cardDate = document.getElementById('card-date');
-  const cardLink = document.getElementById('card-link');
-  const cardClose = document.getElementById('card-close');
+  var card = document.getElementById('issue-card');
+  var backdrop = document.getElementById('issue-card-backdrop');
+  var cardTitle = document.getElementById('card-title');
+  var cardTopic = document.getElementById('card-topic');
+  var cardBody = document.getElementById('card-body');
+  var cardLabels = document.getElementById('card-labels');
+  var cardDate = document.getElementById('card-date');
+  var cardLink = document.getElementById('card-link');
+  var cardClose = document.getElementById('card-close');
 
   function showCard(issue) {
     cardTitle.innerHTML = '<span id="card-number">#' + issue.number + '</span> ' +
       issue.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     cardTopic.textContent = issue.topic || '';
     cardBody.textContent = issue.body || '(no description)';
-
     cardLabels.innerHTML = '';
     (issue.labels || []).forEach(function(label) {
       var pill = document.createElement('span');
@@ -246,13 +244,7 @@ _DETAIL_CARD_JS_TEMPLATE = """\
       pill.textContent = label;
       cardLabels.appendChild(pill);
     });
-
-    if (issue.created_at) {
-      cardDate.textContent = issue.created_at.substring(0, 10);
-    } else {
-      cardDate.textContent = '';
-    }
-
+    cardDate.textContent = issue.created_at ? issue.created_at.substring(0, 10) : '';
     cardLink.href = issue.url || '#';
     backdrop.style.display = 'block';
     card.style.display = 'block';
@@ -269,28 +261,32 @@ _DETAIL_CARD_JS_TEMPLATE = """\
     if (e.key === 'Escape') hideCard();
   });
 
-  // Hook into deck.gl canvas click events.
-  // When a point is hovered, deck.gl shows a .deck-tooltip with the hover text.
-  // On click, we read the tooltip content, parse the issue number, and show the card.
-  document.addEventListener('click', function(e) {
-    // Ignore clicks on the card itself or its backdrop
-    if (card.contains(e.target) || e.target === backdrop) return;
+  // Hook into deck.gl's onClick via the DataMap instance.
+  // DataMapPlot creates a global `datamap` variable with a `.deckgl` DeckGL instance.
+  function hookDeckClick() {
+    if (window.datamap && window.datamap.deckgl) {
+      window.datamap.deckgl.setProps({
+        onClick: function(info) {
+          if (info && info.picked && info.index != null) {
+            var issue = issueByIndex[info.index];
+            if (issue) { showCard(issue); return true; }
+          }
+        }
+      });
+    }
+  }
 
-    var tooltip = document.querySelector('.deck-tooltip');
-    if (!tooltip) return;
-
-    var text = tooltip.textContent || tooltip.innerText || '';
-    if (!text.trim()) return;
-
-    var match = text.match(/#(\\d+):/);
-    if (!match) return;
-
-    var num = parseInt(match[1], 10);
-    var issue = issueMap[num];
-    if (!issue) return;
-
-    showCard(issue);
-  });
+  // Retry until DataMap is initialized (data loads asynchronously)
+  var attempts = 0;
+  var timer = setInterval(function() {
+    attempts++;
+    if (window.datamap && window.datamap.deckgl) {
+      clearInterval(timer);
+      hookDeckClick();
+    } else if (attempts > 30) {
+      clearInterval(timer);
+    }
+  }, 500);
 })();
 </script>
 """

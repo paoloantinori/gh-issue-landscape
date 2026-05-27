@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue Landscape — Method</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a; background: #f8f8f5;
+    line-height: 1.7; padding: 0 20px 100px;
+  }
+  .container { max-width: 740px; margin: 0 auto; padding-top: 48px; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: #656d76; font-size: 15px; margin-bottom: 36px; }
+  h2 {
+    font-size: 18px; margin: 32px 0 12px 0;
+    padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;
+  }
+  p { margin-bottom: 14px; font-size: 15px; }
+  .step {
+    display: flex; gap: 16px; margin-bottom: 20px;
+    padding: 16px; background: #fff; border-radius: 10px;
+    border: 1px solid #e8e8e8;
+  }
+  .step-num {
+    flex-shrink: 0; width: 32px; height: 32px;
+    background: #0969da; color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .step-body h3 { font-size: 15px; margin-bottom: 4px; }
+  .step-body p { margin-bottom: 0; font-size: 14px; color: #333; }
+  code {
+    background: #f0f0f0; padding: 1px 5px; border-radius: 3px;
+    font-size: 0.9em; font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .refs { list-style: none; padding: 0; }
+  .refs li {
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px;
+  }
+  .refs a { color: #0969da; text-decoration: none; }
+  .refs a:hover { text-decoration: underline; }
+  .refs .desc { color: #656d76; font-size: 13px; }
+  #view-switcher {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9000;
+    display: flex; gap: 8px;
+  }
+  #view-switcher a {
+    display: inline-block; padding: 8px 16px;
+    background: #ffffff; color: #0969da;
+    border: 1px solid #d0d7de; border-radius: 8px;
+    font-size: 13px; font-weight: 500; text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  #view-switcher a:hover {
+    background: #f0f6ff; box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>How the Issue Landscape Works</h1>
+  <p class="subtitle">
+    From raw GitHub issues to an interactive semantic map — a six-stage pipeline
+    combining NLP embeddings, manifold learning, and density-based clustering.
+  </p>
+
+  <h2>Pipeline</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h3>Data Collection</h3>
+      <p>Open issues are fetched from the GitHub API via the <code>gh</code> CLI.
+         Each issue's title and body are concatenated into a single document for
+         embedding.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h3>Text Embedding</h3>
+      <p>Each document is converted into a 384-dimensional vector using
+         <b>all-MiniLM-L6-v2</b>, a sentence-transformer model trained on
+         over 1 billion sentence pairs. These vectors encode semantic meaning:
+         issues about similar topics land near each other in vector space.
+         Alternative backends (OpenAI, local API servers) are also supported.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h3>Dimensionality Reduction — UMAP</h3>
+      <p><b>Uniform Manifold Approximation and Projection</b> reduces the
+         384-dim embeddings down to 2D (or 3D) coordinates for visualization.
+         UMAP preserves both local neighborhoods and global structure better
+         than alternatives like t-SNE or PCA.
+         Configuration: <code>n_neighbors=15</code>, <code>min_dist=0.1</code>,
+         <code>metric=cosine</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h3>Clustering — HDBSCAN</h3>
+      <p><b>Hierarchical Density-Based Spatial Clustering of Applications with
+         Noise</b> discovers topic clusters without requiring a pre-defined
+         number of topics. It identifies groups of varying density and shape,
+         and naturally marks isolated points as outliers ("Uncategorized").
+         Configuration: <code>min_cluster_size=5</code>,
+         <code>min_samples=3</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h3>Topic Labeling — c-TF-IDF</h3>
+      <p><b>Class-based Term Frequency–Inverse Document Frequency</b>
+         extracts the most distinctive keywords for each cluster. Terms that
+         are frequent within a topic but rare across others are ranked highest.
+         The top 3 keywords (after stopword filtering) become the topic label,
+         e.g. "Schema / Type / Compatibility".</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <h3>Visualization</h3>
+      <p>The final output is rendered in three complementary views:
+         the <b>2D Semantic Map</b> (DataMapPlot with deck.gl) for spatial
+         exploration, the <b>3D Explorer</b> (Three.js) for immersive
+         navigation, and the <b>Timeline</b> (Plotly) showing topic evolution
+         over time.</p>
+    </div>
+  </div>
+
+  <h2>Orchestration — BERTopic</h2>
+  <p>Steps 3–5 are orchestrated by <b>BERTopic</b>, a modular topic modeling
+     framework that integrates UMAP, HDBSCAN, and c-TF-IDF into a unified
+     pipeline. Pre-computed embeddings from step 2 are passed in, so the
+     embedding model is independent of the topic modeling process.</p>
+
+  <h2>References</h2>
+  <ul class="refs">
+    <li>
+      <a href="https://github.com/MaartenGr/BERTopic" target="_blank">BERTopic</a>
+      <span class="desc"> — Maarten Grootendorst. Modular topic modeling with BERT embeddings.</span>
+    </li>
+    <li>
+      <a href="https://arxiv.org/abs/1802.03426" target="_blank">UMAP paper</a>
+      <span class="desc"> — McInnes, Healy, Melville. Uniform Manifold Approximation and Projection (2018).</span>
+    </li>
+    <li>
+      <a href="https://github.com/scikit-learn-contrib/hdbscan" target="_blank">HDBSCAN</a>
+      <span class="desc"> — Campello, Moulavi, Sander. Density-based clustering.</span>
+    </li>
+    <li>
+      <a href="https://www.sbert.net/" target="_blank">Sentence-Transformers</a>
+      <span class="desc"> — Reimers & Gurevych. Sentence embeddings using Siamese BERT networks.</span>
+    </li>
+    <li>
+      <a href="https://github.com/TutteInstitute/datamapplot" target="_blank">DataMapPlot</a>
+      <span class="desc"> — Leland McInnes. Interactive data cartography visualization.</span>
+    </li>
+    <li>
+      <a href="https://github.com/stevenfazzio/semantic-github-map" target="_blank">Semantic Map of GitHub</a>
+      <span class="desc"> — Steven Fazzio. The project that inspired this approach.</span>
+    </li>
+  </ul>
+</div>
+
+<div id="view-switcher">
+  <a href="landscape-2d.html">View in 2D &#x2197;</a>
+  <a href="landscape-3d.html">View in 3D &#x2197;</a>
+  <a href="timeline.html">Timeline &#x2197;</a>
+</div>
+</body>
+</html>

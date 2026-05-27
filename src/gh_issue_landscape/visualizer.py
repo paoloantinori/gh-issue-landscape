@@ -65,8 +65,8 @@ def _build_issue_data_json(
     records = []
     for i, issue in enumerate(issues):
         body = issue.get("body") or ""
-        if len(body) > 200:
-            body = body[:200] + "..."
+        if len(body) > 600:
+            body = body[:600] + "..."
         tid = result.topics[i] if i < len(result.topics) else -1
         records.append(
             {
@@ -139,7 +139,10 @@ _DETAIL_CARD_CSS = """\
     justify-content: space-between;
     padding: 20px 20px 12px 20px;
     border-bottom: 1px solid #e8e8e8;
+    cursor: grab;
   }
+  #card-header:active { cursor: grabbing; }
+  body.card-dragging { user-select: none; -webkit-user-select: none; }
   #card-title {
     font-size: 16px;
     font-weight: 600;
@@ -179,9 +182,23 @@ _DETAIL_CARD_CSS = """\
     font-size: 14px;
     line-height: 1.6;
     color: #333;
-    white-space: pre-wrap;
+    white-space: normal;
     word-break: break-word;
   }
+  #card-body h1, #card-body h2, #card-body h3,
+  #card-body h4, #card-body h5, #card-body h6 {
+    margin: 8px 0 4px 0; font-weight: 600; line-height: 1.3;
+  }
+  #card-body h1 { font-size: 1.15em; }
+  #card-body h2 { font-size: 1.1em; }
+  #card-body h3, #card-body h4, #card-body h5, #card-body h6 { font-size: 1em; }
+  #card-body code {
+    background: #f0f0f0; padding: 1px 5px; border-radius: 3px;
+    font-size: 0.9em; font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  #card-body ul, #card-body ol { margin: 4px 0; padding-left: 20px; }
+  #card-body a { color: #0969da; text-decoration: underline; }
+  #card-body p { margin: 4px 0; }
   #card-labels {
     padding: 4px 20px 12px 20px;
     display: flex;
@@ -225,6 +242,7 @@ _DETAIL_CARD_HTML = """\
 <div id="view-switcher">
   <a href="landscape-3d.html">View in 3D &#x2197;</a>
   <a href="timeline.html">Timeline &#x2197;</a>
+  <a href="method.html">Method &#x2197;</a>
 </div>
 <div id="issue-card-backdrop"></div>
 <div id="issue-card" role="dialog" aria-modal="true">
@@ -258,12 +276,68 @@ _DETAIL_CARD_JS_TEMPLATE = """\
   var cardDate = document.getElementById('card-date');
   var cardLink = document.getElementById('card-link');
   var cardClose = document.getElementById('card-close');
+  var cardHeader = document.getElementById('card-header');
+
+  // --- Drag support ---
+  var isDragging = false, dragOffsetX = 0, dragOffsetY = 0;
+
+  cardHeader.addEventListener('mousedown', function(e) {
+    if (e.button !== 0 || e.target === cardClose) return;
+    isDragging = true;
+    document.body.classList.add('card-dragging');
+    var rect = card.getBoundingClientRect();
+    card.style.transform = 'none';
+    card.style.top = rect.top + 'px';
+    card.style.left = rect.left + 'px';
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    card.style.left = (e.clientX - dragOffsetX) + 'px';
+    card.style.top = (e.clientY - dragOffsetY) + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (isDragging) {
+      isDragging = false;
+      document.body.classList.remove('card-dragging');
+    }
+  });
+
+  // --- Lightweight markdown renderer ---
+  function renderMarkdown(text) {
+    if (!text) return '(no description)';
+    var h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    h = h.replace(/^######\\s+(.+)$/gm, '<h6>$1</h6>');
+    h = h.replace(/^#####\\s+(.+)$/gm, '<h5>$1</h5>');
+    h = h.replace(/^####\\s+(.+)$/gm, '<h4>$1</h4>');
+    h = h.replace(/^###\\s+(.+)$/gm, '<h3>$1</h3>');
+    h = h.replace(/^##\\s+(.+)$/gm, '<h2>$1</h2>');
+    h = h.replace(/^#\\s+(.+)$/gm, '<h1>$1</h1>');
+    h = h.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
+    h = h.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    h = h.replace(/\\*(.+?)\\*/g, '<em>$1</em>');
+    h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+    h = h.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    h = h.replace(/^[\\-\\*]\\s+(.+)$/gm, '<li>$1</li>');
+    h = h.replace(/((?:<li>.*<\\/li>\\n?)+)/g, '<ul>$1</ul>');
+    h = h.replace(/\\n\\n+/g, '</p><p>');
+    h = h.replace(/\\n/g, '<br>');
+    h = h.replace(/<\\/li><br>/g, '<\\/li>');
+    h = h.replace(/<br><li>/g, '<li>');
+    h = h.replace(/<br>(<h[1-6]>)/g, '$1');
+    h = h.replace(/<\\/h[1-6]><br>/g, function(m) { return m.replace('<br>', ''); });
+    return '<p>' + h.replace(/<p>\\s*<\\/p>/g, '') + '</p>';
+  }
 
   function showCard(issue) {
     cardTitle.innerHTML = '<span id="card-number">#' + issue.number + '</span> ' +
       issue.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
     cardTopic.textContent = issue.topic || '';
-    cardBody.textContent = issue.body || '(no description)';
+    cardBody.innerHTML = renderMarkdown(issue.body);
     cardLabels.innerHTML = '';
     (issue.labels || []).forEach(function(label) {
       var pill = document.createElement('span');
@@ -280,6 +354,9 @@ _DETAIL_CARD_JS_TEMPLATE = """\
   function hideCard() {
     card.style.display = 'none';
     backdrop.style.display = 'none';
+    card.style.top = '50%%';
+    card.style.left = '50%%';
+    card.style.transform = 'translate(-50%%, -50%%)';
   }
 
   cardClose.addEventListener('click', hideCard);
@@ -428,6 +505,53 @@ def print_cli_summary(
     print()
 
 
+_TIMELINE_INJECTION = """\
+<style>
+  #view-switcher {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9000;
+    display: flex; gap: 8px;
+  }
+  #view-switcher a {
+    display: inline-block; padding: 8px 16px;
+    background: #ffffff; color: #0969da;
+    border: 1px solid #d0d7de; border-radius: 8px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px; font-weight: 500; text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  #view-switcher a:hover {
+    background: #f0f6ff; box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
+  #timeline-tips {
+    position: fixed; top: 16px; right: 16px; z-index: 9000;
+    background: rgba(255,255,255,0.92); border: 1px solid #d0d7de;
+    border-radius: 10px; padding: 14px 18px; max-width: 220px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 12px; color: #1a1a1a; line-height: 1.5;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  }
+  #timeline-tips h4 { margin: 0 0 8px 0; font-size: 13px; }
+  #timeline-tips ul { margin: 0; padding-left: 16px; }
+  #timeline-tips li { margin-bottom: 4px; }
+</style>
+<div id="view-switcher">
+  <a href="landscape-2d.html">View in 2D &#x2197;</a>
+  <a href="landscape-3d.html">View in 3D &#x2197;</a>
+  <a href="method.html">Method &#x2197;</a>
+</div>
+<div id="timeline-tips">
+  <h4>How to use</h4>
+  <ul>
+    <li><b>Zoom:</b> drag to select a date range</li>
+    <li><b>Reset:</b> double-click the chart</li>
+    <li><b>Filter:</b> click legend items to show/hide topics</li>
+    <li><b>Details:</b> hover over a data point</li>
+  </ul>
+</div>
+"""
+
+
 def generate_timeline(
     result: PipelineResult,
     issues: list[dict],
@@ -435,9 +559,8 @@ def generate_timeline(
 ) -> Path:
     """Generate a self-contained interactive timeline of topic evolution.
 
-    Attempts to use BERTopic's ``topics_over_time()`` for the primary
-    computation.  When that fails (common with small datasets) or returns
-    an empty frame, falls back to a manual month-level aggregation.
+    Groups issues by calendar month and topic, producing frequency curves
+    that show when each topic was most active.
 
     The resulting Plotly line chart is saved as a standalone HTML file at
     ``{output_dir}/timeline.html``.
@@ -449,40 +572,35 @@ def generate_timeline(
     out_path = Path(output_dir) / "timeline.html"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    docs = [f"{issue['title']}\n{issue.get('body') or ''}" for issue in issues]
-    timestamps = [issue["created_at"] for issue in issues]
-
-    # ------------------------------------------------------------------
-    # Try the native BERTopic method first
-    # ------------------------------------------------------------------
-    topics_over_time: pd.DataFrame | None = None
-    try:
-        tot = result.topic_model.topics_over_time(
-            docs=docs,
-            timestamps=timestamps,
-        )
-        if tot is not None and not tot.empty:
-            topics_over_time = tot
-            log.info("topics_over_time() returned %d rows.", len(tot))
-    except Exception as exc:
-        log.warning("topics_over_time() failed (%s); falling back to manual aggregation.", exc)
-
-    # ------------------------------------------------------------------
-    # Build the Plotly figure
-    # ------------------------------------------------------------------
     fig = go.Figure()
 
-    if topics_over_time is not None:
-        # Filter out outlier topic (-1)
-        df = topics_over_time[topics_over_time["Topic"] != -1].copy()
+    records: list[dict] = []
+    for issue, tid in zip(issues, result.topics):
+        if tid == -1:
+            continue
+        created = pd.Timestamp(issue["created_at"])
+        records.append(
+            {
+                "month": created.to_period("M").to_timestamp(),
+                "topic": tid,
+            }
+        )
 
-        for tid in sorted(df["Topic"].unique()):
-            subset = df[df["Topic"] == tid].sort_values("Timestamp")
+    if records:
+        df = pd.DataFrame(records)
+        counts = (
+            df.groupby(["month", "topic"])
+            .size()
+            .reset_index(name="count")
+        )
+
+        for tid in sorted(counts["topic"].unique()):
+            subset = counts[counts["topic"] == tid].sort_values("month")
             label = result.get_label(int(tid))
             fig.add_trace(
                 go.Scatter(
-                    x=subset["Timestamp"],
-                    y=subset["Frequency"],
+                    x=subset["month"],
+                    y=subset["count"],
                     mode="lines+markers",
                     name=label,
                     hovertemplate=(
@@ -493,62 +611,225 @@ def generate_timeline(
                     meta=[label] * len(subset),
                 )
             )
-    else:
-        # ------------------------------------------------------------------
-        # Manual fallback: group by month and topic
-        # ------------------------------------------------------------------
-        log.info("Using manual month-level aggregation for timeline.")
-
-        records: list[dict] = []
-        for issue, tid in zip(issues, result.topics):
-            if tid == -1:
-                continue
-            created = pd.Timestamp(issue["created_at"])
-            records.append(
-                {
-                    "month": created.to_period("M").to_timestamp(),
-                    "topic": tid,
-                }
-            )
-
-        if records:
-            df_manual = pd.DataFrame(records)
-            counts = (
-                df_manual.groupby(["month", "topic"])
-                .size()
-                .reset_index(name="count")
-            )
-
-            for tid in sorted(counts["topic"].unique()):
-                subset = counts[counts["topic"] == tid].sort_values("month")
-                label = result.get_label(int(tid))
-                fig.add_trace(
-                    go.Scatter(
-                        x=subset["month"],
-                        y=subset["count"],
-                        mode="lines+markers",
-                        name=label,
-                        hovertemplate=(
-                            "<b>%{meta}</b><br>"
-                            "Date: %{x|%Y-%m}<br>"
-                            "Count: %{y}<extra></extra>"
-                        ),
-                        meta=[label] * len(subset),
-                    )
-                )
 
     fig.update_layout(
         title="Topic Evolution Over Time",
         xaxis_title="Date",
-        yaxis_title="Issue Count",
+        yaxis_title="Issues per Month",
         hovermode="x unified",
         legend_title="Topic",
         template="plotly_white",
     )
 
     html = pio.to_html(fig, full_html=True, include_plotlyjs=True)
+
+    if "</body>" in html:
+        html = html.replace("</body>", _TIMELINE_INJECTION + "\n</body>")
+    else:
+        html += _TIMELINE_INJECTION
+
     out_path.write_text(html, encoding="utf-8")
     log.info("Saved topic timeline → %s", out_path)
+    print(f"  -> {out_path}")
+
+    return out_path.resolve()
+
+
+def generate_method_page(output_dir: str = "./output") -> Path:
+    """Generate a static HTML page explaining the analysis methodology."""
+    out_path = Path(output_dir) / "method.html"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    html = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue Landscape — Method</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1a1a1a; background: #f8f8f5;
+    line-height: 1.7; padding: 0 20px 100px;
+  }
+  .container { max-width: 740px; margin: 0 auto; padding-top: 48px; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  .subtitle { color: #656d76; font-size: 15px; margin-bottom: 36px; }
+  h2 {
+    font-size: 18px; margin: 32px 0 12px 0;
+    padding-bottom: 6px; border-bottom: 1px solid #e0e0e0;
+  }
+  p { margin-bottom: 14px; font-size: 15px; }
+  .step {
+    display: flex; gap: 16px; margin-bottom: 20px;
+    padding: 16px; background: #fff; border-radius: 10px;
+    border: 1px solid #e8e8e8;
+  }
+  .step-num {
+    flex-shrink: 0; width: 32px; height: 32px;
+    background: #0969da; color: #fff; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px;
+  }
+  .step-body h3 { font-size: 15px; margin-bottom: 4px; }
+  .step-body p { margin-bottom: 0; font-size: 14px; color: #333; }
+  code {
+    background: #f0f0f0; padding: 1px 5px; border-radius: 3px;
+    font-size: 0.9em; font-family: "SFMono-Regular", Consolas, monospace;
+  }
+  .refs { list-style: none; padding: 0; }
+  .refs li {
+    padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px;
+  }
+  .refs a { color: #0969da; text-decoration: none; }
+  .refs a:hover { text-decoration: underline; }
+  .refs .desc { color: #656d76; font-size: 13px; }
+  #view-switcher {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9000;
+    display: flex; gap: 8px;
+  }
+  #view-switcher a {
+    display: inline-block; padding: 8px 16px;
+    background: #ffffff; color: #0969da;
+    border: 1px solid #d0d7de; border-radius: 8px;
+    font-size: 13px; font-weight: 500; text-decoration: none;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  #view-switcher a:hover {
+    background: #f0f6ff; box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>How the Issue Landscape Works</h1>
+  <p class="subtitle">
+    From raw GitHub issues to an interactive semantic map — a six-stage pipeline
+    combining NLP embeddings, manifold learning, and density-based clustering.
+  </p>
+
+  <h2>Pipeline</h2>
+
+  <div class="step">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h3>Data Collection</h3>
+      <p>Open issues are fetched from the GitHub API via the <code>gh</code> CLI.
+         Each issue's title and body are concatenated into a single document for
+         embedding.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h3>Text Embedding</h3>
+      <p>Each document is converted into a 384-dimensional vector using
+         <b>all-MiniLM-L6-v2</b>, a sentence-transformer model trained on
+         over 1 billion sentence pairs. These vectors encode semantic meaning:
+         issues about similar topics land near each other in vector space.
+         Alternative backends (OpenAI, local API servers) are also supported.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h3>Dimensionality Reduction — UMAP</h3>
+      <p><b>Uniform Manifold Approximation and Projection</b> reduces the
+         384-dim embeddings down to 2D (or 3D) coordinates for visualization.
+         UMAP preserves both local neighborhoods and global structure better
+         than alternatives like t-SNE or PCA.
+         Configuration: <code>n_neighbors=15</code>, <code>min_dist=0.1</code>,
+         <code>metric=cosine</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h3>Clustering — HDBSCAN</h3>
+      <p><b>Hierarchical Density-Based Spatial Clustering of Applications with
+         Noise</b> discovers topic clusters without requiring a pre-defined
+         number of topics. It identifies groups of varying density and shape,
+         and naturally marks isolated points as outliers ("Uncategorized").
+         Configuration: <code>min_cluster_size=5</code>,
+         <code>min_samples=3</code>.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h3>Topic Labeling — c-TF-IDF</h3>
+      <p><b>Class-based Term Frequency–Inverse Document Frequency</b>
+         extracts the most distinctive keywords for each cluster. Terms that
+         are frequent within a topic but rare across others are ranked highest.
+         The top 3 keywords (after stopword filtering) become the topic label,
+         e.g. "Schema / Type / Compatibility".</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <h3>Visualization</h3>
+      <p>The final output is rendered in three complementary views:
+         the <b>2D Semantic Map</b> (DataMapPlot with deck.gl) for spatial
+         exploration, the <b>3D Explorer</b> (Three.js) for immersive
+         navigation, and the <b>Timeline</b> (Plotly) showing topic evolution
+         over time.</p>
+    </div>
+  </div>
+
+  <h2>Orchestration — BERTopic</h2>
+  <p>Steps 3–5 are orchestrated by <b>BERTopic</b>, a modular topic modeling
+     framework that integrates UMAP, HDBSCAN, and c-TF-IDF into a unified
+     pipeline. Pre-computed embeddings from step 2 are passed in, so the
+     embedding model is independent of the topic modeling process.</p>
+
+  <h2>References</h2>
+  <ul class="refs">
+    <li>
+      <a href="https://github.com/MaartenGr/BERTopic" target="_blank">BERTopic</a>
+      <span class="desc"> — Maarten Grootendorst. Modular topic modeling with BERT embeddings.</span>
+    </li>
+    <li>
+      <a href="https://arxiv.org/abs/1802.03426" target="_blank">UMAP paper</a>
+      <span class="desc"> — McInnes, Healy, Melville. Uniform Manifold Approximation and Projection (2018).</span>
+    </li>
+    <li>
+      <a href="https://github.com/scikit-learn-contrib/hdbscan" target="_blank">HDBSCAN</a>
+      <span class="desc"> — Campello, Moulavi, Sander. Density-based clustering.</span>
+    </li>
+    <li>
+      <a href="https://www.sbert.net/" target="_blank">Sentence-Transformers</a>
+      <span class="desc"> — Reimers & Gurevych. Sentence embeddings using Siamese BERT networks.</span>
+    </li>
+    <li>
+      <a href="https://github.com/TutteInstitute/datamapplot" target="_blank">DataMapPlot</a>
+      <span class="desc"> — Leland McInnes. Interactive data cartography visualization.</span>
+    </li>
+    <li>
+      <a href="https://github.com/stevenfazzio/semantic-github-map" target="_blank">Semantic Map of GitHub</a>
+      <span class="desc"> — Steven Fazzio. The project that inspired this approach.</span>
+    </li>
+  </ul>
+</div>
+
+<div id="view-switcher">
+  <a href="landscape-2d.html">View in 2D &#x2197;</a>
+  <a href="landscape-3d.html">View in 3D &#x2197;</a>
+  <a href="timeline.html">Timeline &#x2197;</a>
+</div>
+</body>
+</html>
+"""
+    out_path.write_text(html, encoding="utf-8")
+    log.info("Saved method page → %s", out_path)
     print(f"  -> {out_path}")
 
     return out_path.resolve()

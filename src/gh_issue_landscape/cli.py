@@ -180,7 +180,7 @@ def _run_viz_only(repo: str, output: str, three_d: bool, timeline: bool) -> None
 
 def _render_outputs(result, issues, output, three_d, timeline):
     click.echo("═══ Generating outputs ═══")
-    from gh_issue_landscape.visualizer import generate_2d_map, print_cli_summary
+    from gh_issue_landscape.visualizer import generate_2d_map, generate_method_page, print_cli_summary
 
     map_path = generate_2d_map(result, issues, output_dir=output)
     print_cli_summary(result, issues)
@@ -193,9 +193,9 @@ def _render_outputs(result, issues, output, three_d, timeline):
         click.echo(f"3D explorer: {explorer_path}")
 
     if timeline:
-        if result.topic_model is None:
-            click.echo("Timeline requires topic model (skipped in --viz-only mode).")
-        else:
-            from gh_issue_landscape.visualizer import generate_timeline
-            timeline_path = generate_timeline(result, issues, output_dir=output)
-            click.echo(f"Timeline: {timeline_path}")
+        from gh_issue_landscape.visualizer import generate_timeline
+        timeline_path = generate_timeline(result, issues, output_dir=output)
+        click.echo(f"Timeline: {timeline_path}")
+
+    method_path = generate_method_page(output_dir=output)
+    click.echo(f"Method: {method_path}")
